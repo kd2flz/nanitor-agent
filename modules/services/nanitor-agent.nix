@@ -130,8 +130,8 @@ in
 
       serviceConfig = {
         Type = "simple";
-        User = cfg.user;
-        Group = cfg.group;
+        User = "root";
+        Group = "root";
 
         StateDirectory = "nanitor";   # /var/lib/nanitor
         LogsDirectory = "nanitor";    # /var/log/nanitor
@@ -144,9 +144,6 @@ in
           }
         );
 
-        # ✅ Correct start command (no --config)
-        ExecStart = "${cfg.package}/bin/nanitor-agent start";
-
         Restart = "always";
         RestartSec = "5s";
 
@@ -157,36 +154,30 @@ in
         # SystemCallFilter = [ "@system-service" ];
       };
 
-      # Enrollment & health hooks
-      # We wrap logic in a bash script so it's readable and robust.
-      # Note: Runs as the service's User (cfg.user). If 'signup' needs root, set 'User=root' or use 'ExecStartPre' with 'sudo'—but generally try to keep it unprivileged.
-      script = let
+      # Enrollment hook before start
+      preStart = let
         bin = "${cfg.package}/bin/nanitor-agent";
-      in ''
+        serverUrlScript = if cfg.enroll.serverUrl != null then ''
+          echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
+          ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
+        '' else "";
+      in lib.mkIf cfg.enroll.enable ''
         set -euo pipefail
-
-        log() { echo "[nanitor-agent unit] $*"; }
-
-        # Optionally set server URL
-        if [ "${lib.boolToString (cfg.enroll.enable && cfg.enroll.serverUrl != null)}" = "true" ]; then
-          log "Setting server URL to '${cfg.enroll.serverUrl}'"
-          ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || log "set-server-url failed (continuing)"
-        fi
+        
+        ${serverUrlScript}
 
         # If not enrolled, run signup
-        if [ "${lib.boolToString cfg.enroll.enable}" = "true" ]; then
-          if ! ${bin} is-signedup >/dev/null 2>&1; then
-            log "Not enrolled yet; attempting signup"
-            ${bin} signup || log "signup failed; agent may not connect"
-          else
-            log "Agent already enrolled"
-          fi
+        if ! ${bin} is-signedup >/dev/null 2>&1; then
+          echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
+          ${bin} signup || echo "[nanitor-agent unit] signup failed; agent may not connect"
+        else
+          echo "[nanitor-agent unit] Agent already enrolled"
         fi
       '';
 
-      # Run enrollment before start
-      preStart = ''
-        ${pkgs.bash}/bin/bash -c '${lib.escapeShellArg (lib.getAttr "script" config.systemd.services.nanitor-agent)}'
+      # Main start command
+      script = ''
+        exec ${cfg.package}/bin/nanitor-agent start
       '';
 
       # Health check after start
@@ -213,17 +204,6 @@ in
           exit 0
         '
       '';
-
-      # Wire the script hooks to the unit
-      # (systemd's declarative support is limited—use serviceConfig + unit-level hooks.)
-      unitConfig = {
-        # Nothing here; we used service-level preStart/postStart via mkOrder.
-      };
-
-      # Bind the hooks
-      # NixOS exposes service-level extra commands with these options:
-      #   - preStart / postStart (wrapped by NixOS to ExecStartPre/ExecStartPost)
-      # See: NixOS manual on "systemd.services.<name>.*Start" hooks.
     };
   };
 }
