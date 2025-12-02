@@ -10,7 +10,7 @@ In your system flake, add the nanitor flake as an input and use the exported mod
 ```nix
 inputs = {
   nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-  nanitor.url = "github:kd2flz/nanitor/main"
+  nanitor.url = "github:kd2flz/nanitor/main";
 };
 
 outputs = { self, nixpkgs, nanitor, ... }:
