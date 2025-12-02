@@ -11,7 +11,7 @@
       forAllSystems = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ];
     in {
       packages = forAllSystems (system:
-        let pkgs = import nixpkgs { inherit system; };
+        let pkgs = import nixpkgs { inherit system; config = { allowUnfree = true; }; };
         in {          
             nanitor-agent = pkgs.callPackage ./pkgs/nanitor-agent {
             src = pkgs.fetchurl {
