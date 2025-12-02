@@ -67,7 +67,7 @@ stdenvNoCC.mkDerivation {
 
   meta = with lib; {
     description = "Nanitor agent repackaged from a Debian .deb for Nix/NixOS";
-    #license = licenses.unfree; 
+    license = licenses.unfree; 
     platforms = [ "x86_64-linux" "aarch64-linux" ];
     maintainers = [ "David Rhoads" ];
   };

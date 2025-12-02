@@ -1,16 +1,10 @@
-# Nanitor agent - Nix packaging and NixOS module
+# Nanitor agent - Nix Package and NixOS Module
 
-A small repository containing the Nanitor agent package and a NixOS service module.
-
-**Location:**
+## Module Structure
 - Module: `modules/services/nanitor-agent.nix`
 - Package: `pkgs/nanitor-agent/default.nix`
 
-**Goals:**
-- Provide a reproducible package for the Nanitor agent binary.
-- Provide a NixOS module that exposes sensible defaults and hooks for enrollment and health checks.
-
-**Quick Build / Rebuild (local development)**
+## Quick Build / Rebuild (local development)**
 - Build the package or test the flake locally:
 
   `nix build .#packages.x86_64-linux.nanitor-agent`
@@ -27,13 +21,13 @@ A small repository containing the Nanitor agent package and a NixOS service modu
   sudo nixos-rebuild switch --flake .#your-hostname --impure
   ```
 
-**Example: Importing the module from the flake**
+## How to Use (NixOS Config with Flakes)
 In your system flake, add the nanitor flake as an input and use the exported module and package. Example snippet for `flake.nix` in your system repo:
 
 ```nix
 inputs = {
   nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-  nanitor.url = "path:../nanitor"; # or a git/URL
+  nanitor.url = "github:kd2flz/nanitor/main"
 };
 
 outputs = { self, nixpkgs, nanitor, ... }:
