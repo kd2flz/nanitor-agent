@@ -5,12 +5,12 @@
 - Package: `pkgs/nanitor-agent/default.nix`
 
 ## How to Use (NixOS Config with Flakes)
-In your system flake, add the nanitor flake as an input and use the exported module and package. Example snippet for `flake.nix` in your system repo:
+In your system flake, add the nanitor agent flake as an input and use the exported module and package. Example snippet for `flake.nix` in your system repo:
 
 ```nix
 inputs = {
   nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-  nanitor.url = "github:kd2flz/nanitor/main";
+  nanitor.url = "github:kd2flz/nanitor-agent/main";
 };
 
 outputs = { self, nixpkgs, nanitor, ... }:
