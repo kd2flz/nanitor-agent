@@ -33,7 +33,7 @@ in
     logLevel = lib.mkOption {
       type = lib.types.str;
       default = "info";
-      description = "Log level (exported as NANITOR_LOG_LEVEL).";
+      description = "Log level written to /etc/nanitor/nanitor_agent.ini as 'loglevel' in the [agent] section.";
     };
 
     environment = lib.mkOption {
@@ -53,22 +53,12 @@ in
       description = "Rendered config path (for reference).";
     };
 
-    settingsFormat = lib.mkOption {
-      type = lib.types.enum [ "raw" "json" "toml" "yaml" "ini" ];
-      default = "raw";
-      description = "Format used to render `settings` into the config file.";
-    };
 
-    settings = lib.mkOption {
-      type = lib.types.attrs;
-      default = {};
-      description = "Structured settings; rendered according to `settingsFormat`.";
-    };
 
     settingsText = lib.mkOption {
       type = lib.types.lines;
       default = "";
-      description = "Raw config file content (used when settingsFormat=raw).";
+      description = "Extra lines appended to the [agent] section of /etc/nanitor/nanitor_agent.ini.";
     };
 
     # Enrollment controls & health checks
@@ -106,21 +96,15 @@ in
       description = "Nanitor Agent";
     };
 
-    # Render /etc/nanitor/agent.conf (for reference).
-    environment.etc."nanitor/agent.conf" =
-      let
-        rendered =
-          if cfg.settingsFormat == "raw" then cfg.settingsText
-          else if cfg.settingsFormat == "json" then builtins.toJSON cfg.settings
-          else if cfg.settingsFormat == "toml" then (pkgs.formats.toml { }).generate "agent.conf" cfg.settings
-          else if cfg.settingsFormat == "yaml" then (pkgs.formats.yaml { }).generate "agent.conf" cfg.settings
-          else lib.generators.toINI {} cfg.settings;
-      in {
-        text = rendered;
-        mode = "0640";
-        user = cfg.user;
-        group = cfg.group;
-      };
+    # Render /etc/nanitor/nanitor_agent.ini with agent configuration.
+    environment.etc."nanitor/nanitor_agent.ini" = {
+      text = ''[agent]
+loglevel = ${cfg.logLevel}
+${cfg.settingsText}'';
+      mode = "0640";
+      user = "root";
+      group = "root";
+    };
 
     systemd.services.nanitor-agent = {
       description = "Nanitor Security Agent";
@@ -139,7 +123,6 @@ in
 
         Environment = lib.mapAttrsToList (n: v: "${n}=${v}") (
           cfg.environment // {
-            NANITOR_LOG_LEVEL = cfg.logLevel;
             NANITOR_DATA_DIR = cfg.dataDir;
           }
         );
