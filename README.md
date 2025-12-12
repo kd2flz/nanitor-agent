@@ -35,19 +35,44 @@ outputs = { self, nixpkgs, nanitor, ... }:
 ## Module Options
 - `services.nanitor-agent.enable` : enable service
 - `services.nanitor-agent.package` : package providing the binary (defaults to `pkgs.nanitor-agent`)
-- `services.nanitor-agent.user` / `group` : user and group (service runs as `root` because the agent requires admin privileges)
 - `services.nanitor-agent.dataDir` : data dir (default `/var/lib/nanitor`)
-- `services.nanitor-agent.environment` : extra environment variables (e.g., `NANITOR_ENROLL_TOKEN`)
-- `services.nanitor-agent.enroll.enable` : run auto-signup if not enrolled
+- `services.nanitor-agent.logLevel` : log level written to `/etc/nanitor/nanitor_agent.ini` (default `info`, options: `debug`, `info`, `warn`, `error`)
+- `services.nanitor-agent.settingsText` : extra lines appended to the `[agent]` section of `/etc/nanitor/nanitor_agent.ini`
+- `services.nanitor-agent.environment` : extra environment variables (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
+- `services.nanitor-agent.enroll.enable` : run auto-signup if not enrolled (default `true`)
 - `services.nanitor-agent.enroll.serverUrl` : optional server URL to set before signup
-- `services.nanitor-agent.healthCheck.enable` : run a health check after start
+- `services.nanitor-agent.healthCheck.enable` : run a health check after start (default `true`)
 
-## Systemd / service notes
-- The module uses NixOS systemd script helpers to run optional pre-start enrollment steps, the agent binary, and post-start health checks.
-- The service must run as `root` (the agent requires admin rights).
-- If you see "flag provided but not defined: -config", the system is still starting with an older wrapper/service. Ensure you:
-  - Updated the flake lock (if your system imports this flake) with `nix flake update` in both repos.
-  - Rebuilt the system with the updated flake: `sudo nixos-rebuild switch --flake /path/to/flake#hostname --impure`.
+### Example with Debug Logging
+```nix
+services.nanitor-agent = {
+  enable = true;
+  logLevel = "debug";  # Writes loglevel = debug to /etc/nanitor/nanitor_agent.ini
+  environment = {
+    NANITOR_ENROLL_TOKEN = "your-token-here";
+    NANITOR_ENDPOINT = "https://api.nanitor.example";
+  };
+  # Optionally add extra ini settings (e.g., proxy, etc.)
+  settingsText = ''
+    # proxy_url = http://proxy.example.com:8080
+  '';
+};
+```
+
+## Config File
+The module automatically renders `/etc/nanitor/nanitor_agent.ini` with the `[agent]` section containing:
+- `loglevel` : set from `services.nanitor-agent.logLevel`
+- Any extra settings from `services.nanitor-agent.settingsText`
+
+After rebuild, verify the config:
+```bash
+cat /etc/nanitor/nanitor_agent.ini
+# Should show:
+# [agent]
+# loglevel = debug
+```
+
+Logs are written to `/var/log/nanitor/nanitor-agent.log`.
 
 ## Common troubleshooting commands
 - View recent logs (last 15 minutes):
