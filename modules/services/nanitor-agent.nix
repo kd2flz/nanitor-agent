@@ -1,4 +1,9 @@
-{ config, lib, pkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
 let
   cfg = config.services.nanitor-agent;
 in
@@ -33,12 +38,12 @@ in
     logLevel = lib.mkOption {
       type = lib.types.str;
       default = "info";
-      description = "Log level (exported as NANITOR_LOG_LEVEL).";
+      description = "Log level written to /etc/nanitor/nanitor_agent.ini as 'loglevel' in the [agent] section.";
     };
 
     environment = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
-      default = {};
+      default = { };
       description = "Extra environment variables for the agent (e.g., ENROLL_TOKEN, ENDPOINT).";
       example = {
         NANITOR_ENROLL_TOKEN = "abc123";
@@ -53,22 +58,10 @@ in
       description = "Rendered config path (for reference).";
     };
 
-    settingsFormat = lib.mkOption {
-      type = lib.types.enum [ "raw" "json" "toml" "yaml" "ini" ];
-      default = "raw";
-      description = "Format used to render `settings` into the config file.";
-    };
-
-    settings = lib.mkOption {
-      type = lib.types.attrs;
-      default = {};
-      description = "Structured settings; rendered according to `settingsFormat`.";
-    };
-
     settingsText = lib.mkOption {
       type = lib.types.lines;
       default = "";
-      description = "Raw config file content (used when settingsFormat=raw).";
+      description = "Extra lines appended to the [agent] section of /etc/nanitor/nanitor_agent.ini.";
     };
 
     # Enrollment controls & health checks
@@ -98,7 +91,7 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    users.groups.${cfg.group} = {};
+    users.groups.${cfg.group} = { };
     users.users.${cfg.user} = {
       isSystemUser = true;
       group = cfg.group;
@@ -106,21 +99,16 @@ in
       description = "Nanitor Agent";
     };
 
-    # Render /etc/nanitor/agent.conf (for reference).
-    environment.etc."nanitor/agent.conf" =
-      let
-        rendered =
-          if cfg.settingsFormat == "raw" then cfg.settingsText
-          else if cfg.settingsFormat == "json" then builtins.toJSON cfg.settings
-          else if cfg.settingsFormat == "toml" then (pkgs.formats.toml { }).generate "agent.conf" cfg.settings
-          else if cfg.settingsFormat == "yaml" then (pkgs.formats.yaml { }).generate "agent.conf" cfg.settings
-          else lib.generators.toINI {} cfg.settings;
-      in {
-        text = rendered;
-        mode = "0640";
-        user = cfg.user;
-        group = cfg.group;
-      };
+    # Render /etc/nanitor/nanitor_agent.ini with agent configuration.
+    environment.etc."nanitor/nanitor_agent.ini" = {
+      text = ''
+        [logging]
+        loglevel = ${cfg.logLevel}
+        ${cfg.settingsText}'';
+      mode = "0640";
+      user = "root";
+      group = "root";
+    };
 
     systemd.services.nanitor-agent = {
       description = "Nanitor Security Agent";
@@ -133,19 +121,21 @@ in
         User = "root";
         Group = "root";
 
-        StateDirectory = "nanitor";   # /var/lib/nanitor
-        LogsDirectory = "nanitor";    # /var/log/nanitor
+        StateDirectory = "nanitor"; # /var/lib/nanitor
+        LogsDirectory = "nanitor"; # /var/log/nanitor
         RuntimeDirectory = "nanitor"; # /run/nanitor
 
         Environment = lib.mapAttrsToList (n: v: "${n}=${v}") (
-          cfg.environment // {
-            NANITOR_LOG_LEVEL = cfg.logLevel;
+          cfg.environment
+          // {
             NANITOR_DATA_DIR = cfg.dataDir;
           }
         );
 
-        Restart = "always";
-        RestartSec = "5s";
+        WorkingDirectory = "${cfg.dataDir}/agent";
+        ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
+        Restart = "on-failure";
+        RestartSec = "42s";
 
         # Optional hardening (tune once tested)
         # NoNewPrivileges = true;
@@ -155,29 +145,37 @@ in
       };
 
       # Enrollment hook before start
-      preStart = let
-        bin = "${cfg.package}/bin/nanitor-agent";
-        serverUrlScript = if cfg.enroll.serverUrl != null then ''
-          echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
-          ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
-        '' else "";
-      in lib.mkIf cfg.enroll.enable ''
-        set -euo pipefail
-        
-        ${serverUrlScript}
+      preStart =
+        let
+          bin = "${cfg.package}/bin/nanitor-agent";
+          serverUrlScript =
+            if cfg.enroll.serverUrl != null then
+              ''
+                echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
+                ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
+              ''
+            else
+              "";
+        in
+        lib.mkIf cfg.enroll.enable ''
+          set -euo pipefail
 
-        # If not enrolled, run signup
-        if ! ${bin} is-signedup >/dev/null 2>&1; then
-          echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
-          ${bin} signup || echo "[nanitor-agent unit] signup failed; agent may not connect"
-        else
-          echo "[nanitor-agent unit] Agent already enrolled"
-        fi
-      '';
+          ${serverUrlScript}
+
+          # If not enrolled, run signup
+          if ! ${bin} is-signedup >/dev/null 2>&1; then
+            echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
+            ${bin} signup || echo "[nanitor-agent unit] signup failed; agent may not connect"
+          else
+            echo "[nanitor-agent unit] Agent already enrolled"
+          fi
+        '';
 
       # Main start command
       script = ''
-        exec ${cfg.package}/bin/nanitor-agent start
+        exec ${cfg.package}/bin/nanitor-agent start --config ${
+          config.environment.etc."nanitor/nanitor_agent.ini".source
+        }
       '';
 
       # Health check after start
