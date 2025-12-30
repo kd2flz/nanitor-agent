@@ -57,6 +57,8 @@ services.nanitor-agent = {
     # proxy_url = http://proxy.example.com:8080
   '';
 };
+```
+
 ## Config File and Logging
 
 The module automatically renders the `nanitor_agent.ini` configuration file. This file is typically symlinked from `/etc/nanitor/nanitor_agent.ini` to a specific path in the Nix store. The `nanitor-agent` service is configured to read from this Nix store path.
