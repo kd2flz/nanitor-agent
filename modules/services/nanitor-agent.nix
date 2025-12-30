@@ -118,8 +118,8 @@ in
 
       serviceConfig = {
         Type = "simple";
-        User = "root";
-        Group = "root";
+        User = cfg.user;
+        Group = cfg.group;
 
         StateDirectory = "nanitor"; # /var/lib/nanitor
         LogsDirectory = "nanitor"; # /var/log/nanitor
@@ -160,9 +160,7 @@ in
         lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
 
-          # Ensure /var/log/nanitor exists and has correct ownership for file logging.
-          ${pkgs.coreutils}/bin/mkdir -p /var/log/nanitor
-          ${pkgs.coreutils}/bin/chown ${cfg.user}:${cfg.group} /var/log/nanitor
+
 
           ${serverUrlScript}
 
