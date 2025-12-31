@@ -118,11 +118,11 @@ in
 
       serviceConfig = {
         Type = "simple";
-        User = cfg.user; # Service runs as the nanitor user
-        Group = cfg.group; # Service runs as the nanitor group
+        User = "root"; # Reverting to root as the agent requires full admin rights
+        Group = "root"; # Reverting to root as the agent requires full admin rights
 
-        StateDirectory = "nanitor"; # /var/lib/nanitor, managed by systemd with nanitor:nanitor ownership
-        LogsDirectory = "nanitor"; # /var/log/nanitor, managed by systemd with nanitor:nanitor ownership
+        StateDirectory = "nanitor"; # /var/lib/nanitor, managed by systemd with root:root ownership
+        LogsDirectory = "nanitor"; # /var/log/nanitor, managed by systemd with root:root ownership
         RuntimeDirectory = "nanitor"; # /run/nanitor, managed by systemd
 
         Environment = lib.mapAttrsToList (n: v: "${n}=${v}") (
