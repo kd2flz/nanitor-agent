@@ -37,7 +37,7 @@ outputs = { self, nixpkgs, nanitor, ... }:
 - `services.nanitor-agent.package` : package providing the binary (defaults to `pkgs.nanitor-agent`)
 - `services.nanitor-agent.dataDir` : data dir (default `/var/lib/nanitor`)
 - `services.nanitor-agent.logLevel` : log level written to `/etc/nanitor/nanitor_agent.ini` (default `info`, options: `debug`, `info`, `warn`, `error`)
-- `services.nanitor-agent.settingsText` : extra lines appended to the `[agent]` section of `/etc/nanitor/nanitor_agent.ini`
+- `services.nanitor-agent.settingsText` : extra lines appended to the `[logging]` section of `/etc/nanitor/nanitor_agent.ini`
 - `services.nanitor-agent.environment` : extra environment variables (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
 - `services.nanitor-agent.enroll.enable` : run auto-signup if not enrolled (default `true`)
 - `services.nanitor-agent.enroll.serverUrl` : optional server URL to set before signup
@@ -55,6 +55,20 @@ services.nanitor-agent = {
   # Optionally add extra ini settings (e.g., proxy, etc.)
   settingsText = ''
     # proxy_url = http://proxy.example.com:8080
+  '';
+};
+
+### Example with Custom File Logging Settings
+If you want to explicitly control file logging parameters like `enable_console`, `enable_file`, and `logfile`, you can use `settingsText`:
+
+```nix
+services.nanitor-agent = {
+  enable = true;
+  logLevel = "info"; # Or your desired level
+  settingsText = ''
+    enable_console = false
+    enable_file = true
+    logfile = /var/log/nanitor/nanitor_agent.log
   '';
 };
 ```
