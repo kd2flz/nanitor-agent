@@ -133,6 +133,7 @@ in
         );
 
         WorkingDirectory = "${cfg.dataDir}/agent";
+        ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p /var/log/nanitor && ${pkgs.coreutils}/bin/chown ${cfg.user}:${cfg.group} /var/log/nanitor";
         ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         Restart = "on-failure";
         RestartSec = "42s";
@@ -160,14 +161,10 @@ in
         lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
 
-          # Ensure /var/log/nanitor exists and has correct ownership for file logging.
-          ${pkgs.coreutils}/bin/mkdir -p /var/log/nanitor
-          ${pkgs.coreutils}/bin/chown ${cfg.user}:${cfg.group} /var/log/nanitor
-
           ${serverUrlScript}
 
-           # If not enrolled, run signup
-           if ! ${bin} is-signedup >/dev/null 2>&1; then
+          # If not enrolled, run signup
+          if ! ${bin} is-signedup >/dev/null 2>&1; then
             echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
             ${bin} signup || echo "[nanitor-agent unit] signup failed; agent may not connect"
           else
