@@ -133,6 +133,7 @@ in
         );
 
         WorkingDirectory = "${cfg.dataDir}/agent";
+        ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p /var/log/nanitor && ${pkgs.coreutils}/bin/chown ${cfg.user}:${cfg.group} /var/log/nanitor";
         ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         Restart = "on-failure";
         RestartSec = "42s";
