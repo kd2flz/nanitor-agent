@@ -23,40 +23,17 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: Build nanitor-agent package
-        run: |
-          pwd
-          ls -la
-          nix build .#nanitor-agent --print-build-logs
-      
+        run: nix build .#nanitor-agent --print-build-logs
+        working-directory: nanitor-agent
+
       - name: Validate NixOS module
         run: |
-          pwd
-          ls -la
-          mkdir -p temp-nixos-test
-          cd temp-nixos-test
-          cat <<'EOF' > flake.nix
-          {
-            description = "Temporary flake for NixOS module validation";
-            inputs = {
-              nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-              nanitorAgent.url = "path:../."; # parent of temp-nixos-test is repo root with your main flake
-            };
-            outputs = { self, nixpkgs, nanitorAgent, ... }: {
-              nixosConfigurations.test = nixpkgs.lib.nixosSystem {
-                system = "x86_64-linux";
-                specialArgs = { inherit self; };
-                modules = [
-                  nanitorAgent.nixosModules.nanitor-agent
-                  ({ config, lib, pkgs, ... }: {
-                    boot.loader.systemd-boot.enable = lib.mkForce false;
-                    boot.loader.grub.enable = lib.mkForce false;
-                    networking.hostName = "test-nanitor-agent-module";
-                    services.nanitor-agent.enable = true;
-                  })
-                ];
-              };
-            };
-          }
-          EOF
+            pwd
+            ls -la
+            mkdir -p temp-nixos-test
       
-          nix build .#nixosConfigurations.test.config.system.build.toplevel --print-build-logs
+            cat > temp-nixos-test/flake.nix <<'EOF'
+            { description = "Temporary flake for NixOS module validation"; inputs = { nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11"; nanitorAgent.url = "path:.."; # parent of temp-nixos-test is repo root with your main flake }; outputs = { self, nixpkgs, nanitorAgent, ... }: { nixosConfigurations.test = nixpkgs.lib.nixosSystem { system = "x86_64-linux"; specialArgs = { inherit self; }; modules = [ nanitorAgent.nixosModules.nanitor-agent ({ config, lib, pkgs, ... }: { boot.loader.systemd-boot.enable = lib.mkForce false; boot.loader.grub.enable = lib.mkForce false; networking.hostName = "test-nanitor-agent-module"; services.nanitor-agent.enable = true; }) ]; }; }; } EOF
+            
+            # Build from repository root pointing into the temporary flake so relative "path:.." resolves correctly
+            nix build ./temp-nixos-test#nixosConfigurations.test.config.system.build.toplevel --print-build-logs
