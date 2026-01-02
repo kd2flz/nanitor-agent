@@ -38,7 +38,7 @@ in
     logLevel = lib.mkOption {
       type = lib.types.str;
       default = "info";
-      description = "Log level written to /etc/nanitor/nanitor_agent.ini as 'loglevel' in the [agent] section.";
+      description = "Log level written to /etc/nanitor/nanitor_agent.ini as 'loglevel' in the [logging] section.";
     };
 
     environment = lib.mkOption {
@@ -61,7 +61,7 @@ in
     settingsText = lib.mkOption {
       type = lib.types.lines;
       default = "";
-      description = "Extra lines appended to the [agent] section of /etc/nanitor/nanitor_agent.ini.";
+      description = "Extra lines appended to the [logging] section of /etc/nanitor/nanitor_agent.ini.";
     };
 
     # Enrollment controls & health checks
@@ -106,7 +106,7 @@ in
         loglevel = ${cfg.logLevel}
         ${cfg.settingsText}'';
       mode = "0640";
-      user = "root";
+      user = "root"; # Config file owned by root for security
       group = "root";
     };
 
@@ -118,12 +118,12 @@ in
 
       serviceConfig = {
         Type = "simple";
-        User = "root";
-        Group = "root";
+        User = "root"; # Reverting to root as the agent requires full admin rights
+        Group = "root"; # Reverting to root as the agent requires full admin rights
 
-        StateDirectory = "nanitor"; # /var/lib/nanitor
-        LogsDirectory = "nanitor"; # /var/log/nanitor
-        RuntimeDirectory = "nanitor"; # /run/nanitor
+        StateDirectory = "nanitor"; # /var/lib/nanitor, managed by systemd with root:root ownership
+        LogsDirectory = "nanitor"; # /var/log/nanitor, managed by systemd with root:root ownership
+        RuntimeDirectory = "nanitor"; # /run/nanitor, managed by systemd
 
         Environment = lib.mapAttrsToList (n: v: "${n}=${v}") (
           cfg.environment
@@ -133,7 +133,6 @@ in
         );
 
         WorkingDirectory = "${cfg.dataDir}/agent";
-        ExecStartPre = "${pkgs.coreutils}/bin/mkdir -p /var/log/nanitor && ${pkgs.coreutils}/bin/chown ${cfg.user}:${cfg.group} /var/log/nanitor";
         ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
         Restart = "on-failure";
         RestartSec = "42s";
@@ -174,9 +173,7 @@ in
 
       # Main start command
       script = ''
-        exec ${cfg.package}/bin/nanitor-agent start --config ${
-          config.environment.etc."nanitor/nanitor_agent.ini".source
-        }
+        exec ${cfg.package}/bin/nanitor-agent start --config ${config.environment.etc."nanitor/nanitor_agent.ini".source}
       '';
 
       # Health check after start
