@@ -23,26 +23,24 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: Build nanitor-agent package
-        run: nix build .#nanitor-agent --print-build-logs
-        working-directory: nanitor-agent
-
-      - name: Validate NixOS module
-        working-directory: nanitor-agent # Execute commands relative to the nanitor-agent directory
         run: |
-          # Create a temporary directory for our test configuration
+          pwd
+          ls -la
+          nix build .#nanitor-agent --print-build-logs
+      
+      - name: Validate NixOS module
+        run: |
+          pwd
+          ls -la
           mkdir -p temp-nixos-test
           cd temp-nixos-test
-
-          # Create a minimal flake.nix that references the main nanitor-agent flake
-          cat <<EOF > flake.nix
+          cat <<'EOF' > flake.nix
           {
             description = "Temporary flake for NixOS module validation";
-
             inputs = {
-              nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11"; # Using the same Nixpkgs channel as the main flake
-              nanitorAgent.url = "path:../."; # Reference the local nanitor-agent flake in the parent directory
+              nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
+              nanitorAgent.url = "path:../."; # parent of temp-nixos-test is repo root with your main flake
             };
-
             outputs = { self, nixpkgs, nanitorAgent, ... }: {
               nixosConfigurations.test = nixpkgs.lib.nixosSystem {
                 system = "x86_64-linux";
@@ -50,29 +48,15 @@ jobs:
                 modules = [
                   nanitorAgent.nixosModules.nanitor-agent
                   ({ config, lib, pkgs, ... }: {
-                    # Minimal required configuration for a NixOS system to build
-                    # Disable bootloaders to prevent errors in a non-virtualized environment
                     boot.loader.systemd-boot.enable = lib.mkForce false;
                     boot.loader.grub.enable = lib.mkForce false;
-
                     networking.hostName = "test-nanitor-agent-module";
-
-                    # Explicitly enable the service to ensure its options are evaluated
                     services.nanitor-agent.enable = true;
-
-                    # If the 'nanitor-agent' module requires any mandatory options to be set
-                    # (e.g., a token, server URL, etc.), you would need to define them here.
-                    # Example:
-                    # services.nanitor-agent.settings.token = "dummy-ci-token";
-                    # services.nanitor-agent.settings.serverUrl = "http://localhost:8080";
                   })
                 ];
               };
             };
           }
           EOF
-
-          # Build the NixOS configuration. This will evaluate and build the module's closure.
-          # We build the 'toplevel' output, which represents the entire system closure,
-          # ensuring all dependencies and configurations are resolved.
+      
           nix build .#nixosConfigurations.test.config.system.build.toplevel --print-build-logs
