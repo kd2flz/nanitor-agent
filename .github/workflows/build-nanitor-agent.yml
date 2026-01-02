@@ -28,7 +28,7 @@ jobs:
 
       - name: Validate NixOS module
         working-directory: nanitor-agent # Execute commands relative to the nanitor-agent directory
-        run: |\
+        run: |
           # Create a temporary directory for our test configuration
           mkdir -p temp-nixos-test
           cd temp-nixos-test
