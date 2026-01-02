@@ -23,8 +23,10 @@ jobs:
             experimental-features = nix-command flakes
 
       - name: Build nanitor-agent package
-        run: nix build .#nanitor-agent --print-build-logs
-        working-directory: nanitor-agent
+        run: |
+          pwd
+          ls -la
+          nix build .#nanitor-agent --print-build-logs
 
       - name: Validate NixOS module
         run: |
