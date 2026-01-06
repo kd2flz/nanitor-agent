@@ -1,4 +1,4 @@
-{ stdenvNoCC, lib, dpkg, autoPatchelfHook, makeWrapper, openssl, zlib, curl, util-linux, systemd, gcc, src }:
+{ stdenvNoCC, lib, dpkg, autoPatchelfHook, makeWrapper, openssl, zlib, curl, util-linux, systemd, gcc, python3, src }:
 
 stdenvNoCC.mkDerivation {
   pname = "nanitor-agent";
@@ -19,6 +19,7 @@ stdenvNoCC.mkDerivation {
     util-linux   # libuuid, etc.
     systemd      # libsystemd (if the agent links to it)
     gcc.cc.lib   # libstdc++ and libgcc_s
+    python3      # ensure `python`/`python3` is in the runtime closure
   ];
 
   installPhase = ''
@@ -56,6 +57,12 @@ stdenvNoCC.mkDerivation {
 
     # We do NOT install Debian service files; NixOS will provide its own unit.
     rm -rf "$out/etc" "$out/var" || true
+
+    # Provide a `python` executable for scripts that expect `python`.
+    if command -v python3 >/dev/null 2>&1; then
+      mkdir -p $out/bin
+      ln -sf "$(command -v python3)" "$out/bin/python"
+    fi
   '';
 
   # If you want to quickly verify binary runs, uncomment this:
