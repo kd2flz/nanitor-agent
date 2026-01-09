@@ -129,6 +129,7 @@ in
           cfg.environment
           // {
             NANITOR_DATA_DIR = cfg.dataDir;
+            PATH = lib.makeBinPath [ cfg.package pkgs.dmidecode pkgs.python3 ] + ":${cfg.package}/bin:$\{PATH\}";
           }
         );
 

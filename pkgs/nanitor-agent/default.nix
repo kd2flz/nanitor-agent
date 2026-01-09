@@ -1,4 +1,4 @@
-{ stdenvNoCC, lib, dpkg, autoPatchelfHook, makeWrapper, openssl, zlib, curl, util-linux, systemd, gcc, python3, src }:
+{ stdenvNoCC, lib, dpkg, autoPatchelfHook, makeWrapper, openssl, zlib, curl, util-linux, systemd, gcc, python3, dmidecode, src }:
 
 stdenvNoCC.mkDerivation {
   pname = "nanitor-agent";
@@ -20,6 +20,7 @@ stdenvNoCC.mkDerivation {
     systemd      # libsystemd (if the agent links to it)
     gcc.cc.lib   # libstdc++ and libgcc_s
     python3      # ensure `python`/`python3` is in the runtime closure
+    dmidecode    # for hardware/firmware inventory
   ];
 
   installPhase = ''
@@ -62,6 +63,17 @@ stdenvNoCC.mkDerivation {
     if command -v python3 >/dev/null 2>&1; then
       mkdir -p $out/bin
       ln -sf "$(command -v python3)" "$out/bin/python"
+    fi
+
+    # Symlink dmidecode for hardware inventory
+    mkdir -p $out/bin
+    ln -sf ${dmidecode}/bin/dmidecode $out/bin/dmidecode
+
+    # Wrap the nanitor-agent binary to ensure required tools are in PATH
+    if [ -x "$out/bin/nanitor-agent" ]; then
+      makeWrapper "$out/bin/nanitor-agent" "$out/bin/nanitor-agent.wrapped" \
+        --prefix PATH : "$out/bin:${dmidecode}/bin:${python3}/bin"
+      mv "$out/bin/nanitor-agent.wrapped" "$out/bin/nanitor-agent"
     fi
   '';
 
