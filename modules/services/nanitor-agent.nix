@@ -1,9 +1,5 @@
-{
-  config,
-  lib,
-  pkgs,
-  ...
-}:
+
+{ config, lib, pkgs, ... }:
 let
   cfg = config.services.nanitor-agent;
 in
@@ -43,7 +39,7 @@ in
 
     environment = lib.mkOption {
       type = lib.types.attrsOf lib.types.str;
-      default = { };
+      default = {};
       description = "Extra environment variables for the agent (e.g., ENROLL_TOKEN, ENDPOINT).";
       example = {
         NANITOR_ENROLL_TOKEN = "abc123";
@@ -51,10 +47,9 @@ in
       };
     };
 
-    # Keep the config file managed, even if the agent doesn't consume it directly.
     configPath = lib.mkOption {
       type = lib.types.path;
-      default = "/etc/nanitor/agent.conf";
+      default = "/etc/nanitor/nanitor_agent.ini";
       description = "Rendered config path (for reference).";
     };
 
@@ -64,7 +59,6 @@ in
       description = "Extra lines appended to the [logging] section of /etc/nanitor/nanitor_agent.ini.";
     };
 
-    # Enrollment controls & health checks
     enroll.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -91,79 +85,78 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    users.groups.${cfg.group} = { };
-    users.users.${cfg.user} = {
-      isSystemUser = true;
-      group = cfg.group;
-      home = cfg.dataDir;
-      description = "Nanitor Agent";
+
+    # Only create non-root user/group if configured (service runs as root by default).
+    users.groups = lib.mkIf (cfg.group != "root") { ${cfg.group} = {}; };
+    users.users  = lib.mkIf (cfg.user  != "root") {
+      ${cfg.user} = {
+        isSystemUser = true;
+        group = cfg.group;
+        home = cfg.dataDir;
+        description = "Nanitor Agent";
+      };
     };
 
-    # Render /etc/nanitor/nanitor_agent.ini with agent configuration.
+    # /etc/nanitor/nanitor_agent.ini managed via environment.etc
     environment.etc."nanitor/nanitor_agent.ini" = {
       text = ''
         [logging]
         loglevel = ${cfg.logLevel}
-        ${cfg.settingsText}'';
+        ${cfg.settingsText}
+      '';
       mode = "0640";
-      user = "root"; # Config file owned by root for security
+      user = "root";
       group = "root";
     };
+    # (environment.etc is the canonical way to manage files under /etc on NixOS.)  # [5](https://unix.stackexchange.com/questions/500025/how-to-add-a-file-to-etc-in-nixos)[6](https://mynixos.com/nixpkgs/option/environment.etc)
 
     systemd.services.nanitor-agent = {
       description = "Nanitor Security Agent";
-      after = [ "network-online.target" ];
-      wants = [ "network-online.target" ];
+
+      # Provide runtime tools via systemd's path option (adds bin/sbin to PATH).
+      path = with pkgs; [ python3 dmidecode ];  # [1](https://mynixos.com/nixpkgs/option/systemd.services.%3Cname%3E.path)
+
+      after    = [ "network-online.target" ];
+      wants    = [ "network-online.target" ];
       wantedBy = [ "multi-user.target" ];
 
       serviceConfig = {
-        Type = "simple";
-        User = "root"; # Reverting to root as the agent requires full admin rights
-        Group = "root"; # Reverting to root as the agent requires full admin rights
+        Type  = "simple";
+        User  = "root";   # Agent requires admin privileges.
+        Group = "root";   # Match User.
 
-        StateDirectory = "nanitor"; # /var/lib/nanitor, managed by systemd with root:root ownership
-        LogsDirectory = "nanitor"; # /var/log/nanitor, managed by systemd with root:root ownership
-        RuntimeDirectory = "nanitor"; # /run/nanitor, managed by systemd
+        # These systemd-managed directories will be created under /var/{lib,log,run}/nanitor
+        StateDirectory  = "nanitor";
+        LogsDirectory   = "nanitor";
+        RuntimeDirectory= "nanitor";
 
+        # No manual PATH needed; 'path = [...]' above handles it.  # [1](https://mynixos.com/nixpkgs/option/systemd.services.%3Cname%3E.path)
         Environment = lib.mapAttrsToList (n: v: "${n}=${v}") (
-          cfg.environment
-          // {
+          cfg.environment // {
             NANITOR_DATA_DIR = cfg.dataDir;
-            PATH = lib.makeBinPath [ cfg.package pkgs.dmidecode pkgs.python3 ] + ":${cfg.package}/bin:$\{PATH\}";
           }
         );
 
-        WorkingDirectory = "${cfg.dataDir}/agent";
-        ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
-        Restart = "on-failure";
-        RestartSec = "42s";
+        # Use the dataDir as working directory; it exists via StateDirectory (default matches).
+        WorkingDirectory = cfg.dataDir;
 
-        # Optional hardening (tune once tested)
-        # NoNewPrivileges = true;
-        # ProtectSystem = "strict";
-        # ProtectHome = true;
-        # SystemCallFilter = [ "@system-service" ];
+        ExecReload = "${pkgs.coreutils}/bin/kill -HUP $MAINPID";
+        Restart    = "on-failure";
+        RestartSec = "42s";
       };
 
-      # Enrollment hook before start
+      # Enrollment hook before start (shell features OK via preStart).
       preStart =
         let
           bin = "${cfg.package}/bin/nanitor-agent";
           serverUrlScript =
-            if cfg.enroll.serverUrl != null then
-              ''
-                echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
-                ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
-              ''
-            else
-              "";
-        in
-        lib.mkIf cfg.enroll.enable ''
+            if cfg.enroll.serverUrl != null then ''
+              echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
+              ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
+            '' else "";
+        in lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
-
           ${serverUrlScript}
-
-          # If not enrolled, run signup
           if ! ${bin} is-signedup >/dev/null 2>&1; then
             echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
             ${bin} signup || echo "[nanitor-agent unit] signup failed; agent may not connect"
@@ -172,24 +165,22 @@ in
           fi
         '';
 
-      # Main start command
+      # Start command (using NixOS 'script' convenience so we can pass --config easily).
       script = ''
         exec ${cfg.package}/bin/nanitor-agent start --config ${config.environment.etc."nanitor/nanitor_agent.ini".source}
-      '';
+      '';  # (script expands to ExecStart with a generated shell wrapper.)  # [3](https://discourse.nixos.org/t/difference-systemd-executable-command-methods/36964)
 
-      # Health check after start
+      # Health check after start; fully-qualify 'timeout' to be safe.
       postStart = lib.mkIf cfg.healthCheck.enable ''
-        timeout ${toString cfg.healthCheck.timeoutSec} ${pkgs.bash}/bin/bash -c '
+        ${pkgs.coreutils}/bin/timeout ${toString cfg.healthCheck.timeoutSec} ${pkgs.bash}/bin/bash -c '
           set -euo pipefail
           bin="${cfg.package}/bin/nanitor-agent"
 
-          # Try info first (quick sanity)
           if ! "$bin" info >/dev/null 2>&1; then
             echo "[nanitor-agent unit] info failed"
             exit 1
           fi
 
-          # Enrollment check if enabled
           if ${lib.boolToString cfg.enroll.enable}; then
             if ! "$bin" is-signedup >/dev/null 2>&1; then
               echo "[nanitor-agent unit] not enrolled after start"
