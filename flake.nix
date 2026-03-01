@@ -28,7 +28,7 @@
           nanitor-agent = pkgs.callPackage ./pkgs/nanitor-agent {
             src = pkgs.fetchurl {
               url = "https://nanitor.io/agents/nanitor-agent-latest_amd64.deb";
-              sha256 = "129nwxgc7syn08wf4kkcmixzxs8l14xhb8r7ilgymvmb8zdpsnb4";
+              sha256 = "f5KbFT3777SdR+tDA4nviXPV+HSkFzLS1AhbKV16c2Y=";
             };
           };
 
