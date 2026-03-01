@@ -69,11 +69,11 @@ stdenvNoCC.mkDerivation {
     mkdir -p $out/bin
     ln -sf ${dmidecode}/bin/dmidecode $out/bin/dmidecode
 
-    # Wrap the nanitor-agent binary to ensure required tools are in PATH
-    if [ -x "$out/bin/nanitor-agent" ]; then
-      makeWrapper "$out/bin/nanitor-agent" "$out/bin/nanitor-agent.wrapped" \
+    # Wrap nanitor-agent to ensure required tools are in PATH
+    # IMPORTANT: Wrap nanitor-agent-bin (the actual binary), not the wrapper
+    if [ -x "$out/opt/nanitor-agent/bin/nanitor-agent-bin" ]; then
+      makeWrapper "$out/opt/nanitor-agent/bin/nanitor-agent-bin" "$out/bin/nanitor-agent" \
         --prefix PATH : "$out/bin:${dmidecode}/bin:${python3}/bin"
-      mv "$out/bin/nanitor-agent.wrapped" "$out/bin/nanitor-agent"
     fi
   '';
 
