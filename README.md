@@ -33,15 +33,20 @@ outputs = { self, nixpkgs, nanitor, ... }:
   `nix build .#packages.x86_64-linux.nanitor-agent`
 
 ## Module Options
-- `services.nanitor-agent.enable` : enable service
-- `services.nanitor-agent.package` : package providing the binary (defaults to `pkgs.nanitor-agent`)
-- `services.nanitor-agent.dataDir` : data dir (default `/var/lib/nanitor`)
-- `services.nanitor-agent.logLevel` : log level written to `/etc/nanitor/nanitor_agent.ini` (default `info`, options: `debug`, `info`, `warn`, `error`)
-- `services.nanitor-agent.settingsText` : extra lines appended to the `[logging]` section of `/etc/nanitor/nanitor_agent.ini`
-- `services.nanitor-agent.environment` : extra environment variables (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
-- `services.nanitor-agent.enroll.enable` : run auto-signup if not enrolled (default `true`)
-- `services.nanitor-agent.enroll.serverUrl` : optional server URL to set before signup
-- `services.nanitor-agent.healthCheck.enable` : run a health check after start (default `true`)
+
+- `services.nanitor-agent.enable` : Enable the Nanitor agent service (default: `false`)
+- `services.nanitor-agent.package` : Package providing the binary (defaults to `pkgs.nanitor-agent`)
+- `services.nanitor-agent.user` : System user to run the Nanitor agent (default: `nanitor`)
+- `services.nanitor-agent.group` : System group for the Nanitor agent (default: `nanitor`)
+- `services.nanitor-agent.dataDir` : Data directory used by the agent (default: `/var/lib/nanitor`)
+- `services.nanitor-agent.logLevel` : Log level written to `/etc/nanitor/nanitor_agent.ini` (default: `info`, options: `debug`, `info`, `warn`, `error`)
+- `services.nanitor-agent.settingsText` : Extra lines appended to the `[logging]` section of `/etc/nanitor/nanitor_agent.ini`
+- `services.nanitor-agent.configPath` : Path to the rendered config file (default: `/etc/nanitor/nanitor_agent.ini`)
+- `services.nanitor-agent.environment` : Extra environment variables for the agent (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
+- `services.nanitor-agent.enroll.enable` : Automatically run signup if not enrolled (default: `true`)
+- `services.nanitor-agent.enroll.serverUrl` : Optional server URL to set before signup
+- `services.nanitor-agent.healthCheck.enable` : Run a health check after start (default: `true`)
+- `services.nanitor-agent.healthCheck.timeoutSec` : Max seconds to wait for health check (default: `20`)
 
 ### Example with Debug Logging
 ```nix
@@ -129,12 +134,11 @@ Logs are primarily handled by `journald` and also written to a file.
   sudo tail -f /var/log/nanitor/nanitor_agent.log
   ```
 
-## Common troubleshooting commands (other than logging)
+## Common troubleshooting commands
+
 - See unit status:
   `sudo systemctl status nanitor-agent`
 
 ## Notes about the package
-- The `pkgs/nanitor-agent` derivation in this repo fetches the vendor-provided binary. Verify `sha256` if you change the `url`.
 
-## Notes about the package
-- The `pkgs/nanitor-agent` derivation in this repo fetches the vendor-provided binary. Verify `sha256` if you change the `url`.
+The `pkgs/nanitor-agent` derivation fetches the vendor-provided Debian package from `https://nanitor.io/agents/nanitor-agent-latest_amd64.deb`. If you change the URL, verify the `sha256` hash in `flake.nix`.
