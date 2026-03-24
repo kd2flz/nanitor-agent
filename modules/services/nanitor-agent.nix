@@ -71,6 +71,12 @@ in
       description = "If set, runs 'set-server-url <url>' before signup.";
     };
 
+    enroll.key = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Signup key for automatic enrollment. Can also be provided via NANITOR_ENROLL_TOKEN environment variable.";
+    };
+
     healthCheck.enable = lib.mkOption {
       type = lib.types.bool;
       default = true;
@@ -154,12 +160,13 @@ in
               echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
               ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
             '' else "";
+          signupKeyArg = if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}" else "";
         in lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
           ${serverUrlScript}
           if ! ${bin} is-signedup >/dev/null 2>&1; then
             echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
-            ${bin} signup || echo "[nanitor-agent unit] signup failed; agent may not connect"
+            ${bin} signup ${signupKeyArg} || echo "[nanitor-agent unit] signup failed; agent may not connect"
           else
             echo "[nanitor-agent unit] Agent already enrolled"
           fi
