@@ -45,6 +45,7 @@ outputs = { self, nixpkgs, nanitor, ... }:
 - `services.nanitor-agent.environment` : Extra environment variables for the agent (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
 - `services.nanitor-agent.enroll.enable` : Automatically run signup if not enrolled (default: `true`)
 - `services.nanitor-agent.enroll.serverUrl` : Optional server URL to set before signup
+- `services.nanitor-agent.enroll.key` : Signup key for automatic enrollment (alternative: set `NANITOR_ENROLL_TOKEN` in `environment`)
 - `services.nanitor-agent.healthCheck.enable` : Run a health check after start (default: `true`)
 - `services.nanitor-agent.healthCheck.timeoutSec` : Max seconds to wait for health check (default: `20`)
 
