@@ -164,11 +164,12 @@ in
         in lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
           ${serverUrlScript}
-          if ! ${bin} is-signedup >/dev/null 2>&1; then
+          AGENT_UUID=$(${bin} info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//')
+          if ! ${bin} is-signedup >/dev/null 2>&1 || [ -z "$AGENT_UUID" ]; then
             echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
             ${bin} signup ${signupKeyArg} || echo "[nanitor-agent unit] signup failed; agent may not connect"
           else
-            echo "[nanitor-agent unit] Agent already enrolled"
+            echo "[nanitor-agent unit] Agent already enrolled (UUID: $AGENT_UUID)"
           fi
         '';
 
@@ -189,8 +190,9 @@ in
           fi
 
           if ${lib.boolToString cfg.enroll.enable}; then
-            if ! "$bin" is-signedup >/dev/null 2>&1; then
-              echo "[nanitor-agent unit] not enrolled after start"
+            AGENT_UUID=$("$bin" info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//')
+            if ! "$bin" is-signedup >/dev/null 2>&1 || [ -z "$AGENT_UUID" ]; then
+              echo "[nanitor-agent unit] not enrolled after start (UUID: $AGENT_UUID)"
               exit 2
             fi
           fi
