@@ -189,12 +189,10 @@ in
             exit 1
           fi
 
-          CHECK_ENROLLED=${if cfg.enroll.enable then "1" else "0"}
-          if [ "$CHECK_ENROLLED" = "1" ]; then
+          if ${if cfg.enroll.enable then "true" else "false"}; then
             AGENT_UUID=$("$bin" info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//')
             if ! "$bin" is-signedup >/dev/null 2>&1 || [ -z "$AGENT_UUID" ]; then
-              echo "[nanitor-agent unit] not enrolled after start (UUID: $AGENT_UUID)"
-              exit 2
+              echo "[nanitor-agent unit] not enrolled yet (UUID: $AGENT_UUID); can enroll later"
             fi
           fi
 
