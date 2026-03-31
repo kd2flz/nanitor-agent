@@ -178,7 +178,7 @@ in
         exec ${cfg.package}/bin/nanitor-agent start --config ${config.environment.etc."nanitor/nanitor_agent.ini".source}
       '';  # (script expands to ExecStart with a generated shell wrapper.)  # [3](https://discourse.nixos.org/t/difference-systemd-executable-command-methods/36964)
 
-      # Health check after start; fully-qualify 'timeout' to be safe.
+      # Health check after start - just verify agent responds to info command.
       postStart = lib.mkIf cfg.healthCheck.enable ''
         ${pkgs.coreutils}/bin/timeout ${toString cfg.healthCheck.timeoutSec} ${pkgs.bash}/bin/bash -c '
           set -euo pipefail
@@ -187,13 +187,6 @@ in
           if ! "$bin" info >/dev/null 2>&1; then
             echo "[nanitor-agent unit] info failed"
             exit 1
-          fi
-
-          if ${if cfg.enroll.enable then "true" else "false"}; then
-            AGENT_UUID=$("$bin" info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//')
-            if ! "$bin" is-signedup >/dev/null 2>&1 || [ -z "$AGENT_UUID" ]; then
-              echo "[nanitor-agent unit] not enrolled yet (UUID: $AGENT_UUID); can enroll later"
-            fi
           fi
 
           echo "[nanitor-agent unit] health OK"
