@@ -161,7 +161,7 @@ in
               ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
             '' else "";
           signupKeyArg = if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}"
-  else if cfg.environment.NANITOR_ENROLL_TOKEN or "" != "" then "--key ''${NANITOR_ENROLL_TOKEN}"
+  else if cfg.environment.NANITOR_ENROLL_TOKEN or "" != "" then "--key $NANITOR_ENROLL_TOKEN"
   else "";
         in lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
