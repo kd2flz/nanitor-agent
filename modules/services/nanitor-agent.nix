@@ -74,7 +74,24 @@ in
     enroll.key = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Signup key for automatic enrollment. Can also be provided via NANITOR_ENROLL_TOKEN environment variable.";
+      description = ''
+        Signup key value (raw base64 string) for automatic enrollment.
+        Mutually exclusive with enroll.keyFile.
+        Can also be provided via NANITOR_ENROLL_TOKEN environment variable.
+      '';
+    };
+
+    enroll.keyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Path to a file containing the signup key for automatic enrollment.
+        The file may be in PEM format (with -----BEGIN/END----- headers) or
+        contain raw base64 content; PEM headers are stripped automatically.
+        This is the recommended option when using secret managers like
+        sops-nix or agenix, which provide secrets as files on disk.
+        Mutually exclusive with enroll.key.
+      '';
     };
 
     healthCheck.enable = lib.mkOption {
@@ -91,6 +108,13 @@ in
   };
 
   config = lib.mkIf cfg.enable {
+
+    assertions = [
+      {
+        assertion = !(cfg.enroll.key != null && cfg.enroll.keyFile != null);
+        message = "services.nanitor-agent.enroll.key and services.nanitor-agent.enroll.keyFile are mutually exclusive.";
+      }
+    ];
 
     # Only create non-root user/group if configured (service runs as root by default).
     users.groups = lib.mkIf (cfg.group != "root") { ${cfg.group} = {}; };
@@ -114,13 +138,12 @@ in
       user = "root";
       group = "root";
     };
-    # (environment.etc is the canonical way to manage files under /etc on NixOS.)  # [5](https://unix.stackexchange.com/questions/500025/how-to-add-a-file-to-etc-in-nixos)[6](https://mynixos.com/nixpkgs/option/environment.etc)
 
     systemd.services.nanitor-agent = {
       description = "Nanitor Security Agent";
 
       # Provide runtime tools via systemd's path option (adds bin/sbin to PATH).
-      path = with pkgs; [ python3 dmidecode ];  # [1](https://mynixos.com/nixpkgs/option/systemd.services.%3Cname%3E.path)
+      path = with pkgs; [ python3 dmidecode ];
 
       after    = [ "network-online.target" ];
       wants    = [ "network-online.target" ];
@@ -134,9 +157,8 @@ in
         # These systemd-managed directories will be created under /var/{lib,log,run}/nanitor
         StateDirectory  = "nanitor";
         LogsDirectory   = "nanitor";
-        RuntimeDirectory= "nanitor";
+        RuntimeDirectory = "nanitor";
 
-        # No manual PATH needed; 'path = [...]' above handles it.  # [1](https://mynixos.com/nixpkgs/option/systemd.services.%3Cname%3E.path)
         Environment = lib.mapAttrsToList (n: v: "${n}=${v}") (
           cfg.environment // {
             NANITOR_DATA_DIR = cfg.dataDir;
@@ -155,18 +177,47 @@ in
       preStart =
         let
           bin = "${cfg.package}/bin/nanitor-agent";
+
           serverUrlScript =
             if cfg.enroll.serverUrl != null then ''
               echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
               ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
             '' else "";
-          signupKeyArg = if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}"
-  else if cfg.environment.NANITOR_ENROLL_TOKEN or "" != "" then "--key $NANITOR_ENROLL_TOKEN"
-  else "";
+
+          # Build the signup key argument based on the configured source.
+          # Priority: keyFile > key > NANITOR_ENROLL_TOKEN env var
+          signupKeyArg =
+            if cfg.enroll.keyFile != null then "--key \"$NANITOR_SIGNUP_KEY\""
+            else if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}"
+            else if (cfg.environment.NANITOR_ENROLL_TOKEN or "") != "" then "--key \"$NANITOR_ENROLL_TOKEN\""
+            else "";
+
+          # When keyFile is set, read the file at runtime and strip PEM headers if present.
+          # This handles both raw base64 and PEM-wrapped keys transparently.
+          readKeyFileScript =
+            if cfg.enroll.keyFile != null then ''
+              if [ ! -f ${lib.escapeShellArg cfg.enroll.keyFile} ]; then
+                echo "[nanitor-agent unit] ERROR: key file not found: ${lib.escapeShellArg cfg.enroll.keyFile}"
+                echo "[nanitor-agent unit] If using sops-nix or agenix, ensure the secret is available before this service starts."
+                exit 1
+              fi
+              # Read the key file and strip PEM headers/footers if present.
+              NANITOR_SIGNUP_KEY=$(${pkgs.gnused}/bin/sed '/^-----BEGIN.*-----$/d; /^-----END.*-----$/d' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '[:space:]')
+              if [ -z "$NANITOR_SIGNUP_KEY" ]; then
+                echo "[nanitor-agent unit] ERROR: key file is empty or contains only PEM headers: ${lib.escapeShellArg cfg.enroll.keyFile}"
+                exit 1
+              fi
+              export NANITOR_SIGNUP_KEY
+              echo "[nanitor-agent unit] Loaded signup key from file (${if cfg.enroll.keyFile != null then "PEM headers stripped if present" else "raw"})"
+            '' else "";
+
         in lib.mkIf cfg.enroll.enable ''
           set -euo pipefail
+
+          ${readKeyFileScript}
           ${serverUrlScript}
-          AGENT_UUID=$(${bin} info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//')
+
+          AGENT_UUID=$(${bin} info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//' || true)
           if ! ${bin} is-signedup >/dev/null 2>&1 || [ -z "$AGENT_UUID" ]; then
             echo "[nanitor-agent unit] Not enrolled yet; attempting signup"
             ${bin} signup ${signupKeyArg} || echo "[nanitor-agent unit] signup failed; agent may not connect"
