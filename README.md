@@ -45,9 +45,34 @@ outputs = { self, nixpkgs, nanitor, ... }:
 - `services.nanitor-agent.environment` : Extra environment variables for the agent (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
 - `services.nanitor-agent.enroll.enable` : Automatically run signup if not enrolled (default: `true`)
 - `services.nanitor-agent.enroll.serverUrl` : Optional server URL to set before signup
-- `services.nanitor-agent.enroll.key` : Signup key for automatic enrollment (alternative: set `NANITOR_ENROLL_TOKEN` in `environment`)
+- `services.nanitor-agent.enroll.key` : Signup key value (raw base64 string) for automatic enrollment. Mutually exclusive with `enroll.keyFile`. Alternative: set `NANITOR_ENROLL_TOKEN` in `environment`
+- `services.nanitor-agent.enroll.keyFile` : Path to a file containing the signup key. Supports both PEM format (with `-----BEGIN/END-----` headers) and raw base64; PEM headers are stripped automatically. Recommended when using sops-nix or agenix. Mutually exclusive with `enroll.key`
 - `services.nanitor-agent.healthCheck.enable` : Run a health check after start (default: `true`)
 - `services.nanitor-agent.healthCheck.timeoutSec` : Max seconds to wait for health check (default: `20`)
+
+### Example with sops-nix (Recommended for Secrets)
+```nix
+services.nanitor-agent = {
+  enable = true;
+  enroll.enable = true;
+  enroll.keyFile = config.sops.secrets.nanitor_enroll_token.path;
+  enroll.serverUrl = "https://cci.nanitor.net/api";
+};
+```
+
+The `keyFile` option reads the secret file at runtime and automatically strips PEM headers
+if the file is in PEM format (e.g., `-----BEGIN ORGANIZATION SIGNUP KEY-----`).
+This works with both PEM-wrapped and raw base64 key files.
+
+### Example with Direct Key Value
+```nix
+services.nanitor-agent = {
+  enable = true;
+  enroll.enable = true;
+  enroll.key = "your-raw-base64-key-here";
+  enroll.serverUrl = "https://cci.nanitor.net/api";
+};
+```
 
 ### Example with Debug Logging
 ```nix
