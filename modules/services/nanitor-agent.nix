@@ -68,7 +68,24 @@ in
     enroll.serverUrl = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "If set, runs 'set-server-url <url>' before signup.";
+      description = ''
+        Server URL to set before signup (e.g. "https://cci.nanitor.net/api").
+        The value is used directly; use enroll.serverUrlFile if the URL is
+        stored in a file (e.g. a sops-nix or agenix secret).
+        Mutually exclusive with enroll.serverUrlFile.
+      '';
+    };
+
+    enroll.serverUrlFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Path to a file containing the server URL for enrollment.
+        The URL is read from the file at runtime (leading/trailing whitespace
+        is stripped). Use this instead of enroll.serverUrl when the URL is
+        managed by a secret manager like sops-nix or agenix.
+        Mutually exclusive with enroll.serverUrl.
+      '';
     };
 
     enroll.key = lib.mkOption {
@@ -113,6 +130,10 @@ in
       {
         assertion = !(cfg.enroll.key != null && cfg.enroll.keyFile != null);
         message = "services.nanitor-agent.enroll.key and services.nanitor-agent.enroll.keyFile are mutually exclusive.";
+      }
+      {
+        assertion = !(cfg.enroll.serverUrl != null && cfg.enroll.serverUrlFile != null);
+        message = "services.nanitor-agent.enroll.serverUrl and services.nanitor-agent.enroll.serverUrlFile are mutually exclusive.";
       }
     ];
 
@@ -178,8 +199,27 @@ in
         let
           bin = "${cfg.package}/bin/nanitor-agent";
 
+          # Read server URL from file at runtime if serverUrlFile is set.
+          readServerUrlFileScript =
+            if cfg.enroll.serverUrlFile != null then ''
+              if [ ! -f ${lib.escapeShellArg cfg.enroll.serverUrlFile} ]; then
+                echo "[nanitor-agent unit] ERROR: server URL file not found: ${lib.escapeShellArg cfg.enroll.serverUrlFile}"
+                echo "[nanitor-agent unit] If using sops-nix or agenix, ensure the secret is available before this service starts."
+                exit 1
+              fi
+              NANITOR_SERVER_URL=$(tr -d '[:space:]' < ${lib.escapeShellArg cfg.enroll.serverUrlFile})
+              if [ -z "$NANITOR_SERVER_URL" ]; then
+                echo "[nanitor-agent unit] ERROR: server URL file is empty: ${lib.escapeShellArg cfg.enroll.serverUrlFile}"
+                exit 1
+              fi
+              export NANITOR_SERVER_URL
+            '' else "";
+
           serverUrlScript =
-            if cfg.enroll.serverUrl != null then ''
+            if cfg.enroll.serverUrlFile != null then ''
+              echo "[nanitor-agent unit] Setting server URL from file"
+              ${bin} set-server-url "$NANITOR_SERVER_URL" || echo "[nanitor-agent unit] set-server-url failed (continuing)"
+            '' else if cfg.enroll.serverUrl != null then ''
               echo "[nanitor-agent unit] Setting server URL to '${cfg.enroll.serverUrl}'"
               ${bin} set-server-url ${lib.escapeShellArg cfg.enroll.serverUrl} || echo "[nanitor-agent unit] set-server-url failed (continuing)"
             '' else "";
@@ -215,6 +255,7 @@ in
           set -euo pipefail
 
           ${readKeyFileScript}
+          ${readServerUrlFileScript}
           ${serverUrlScript}
 
           AGENT_UUID=$(${bin} info 2>/dev/null | grep "^UUID:" | sed 's/^UUID: *//' || true)
