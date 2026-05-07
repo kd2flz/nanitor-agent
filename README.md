@@ -44,7 +44,8 @@ outputs = { self, nixpkgs, nanitor, ... }:
 - `services.nanitor-agent.configPath` : Path to the rendered config file (default: `/etc/nanitor/nanitor_agent.ini`)
 - `services.nanitor-agent.environment` : Extra environment variables for the agent (e.g., `NANITOR_ENROLL_TOKEN`, `NANITOR_ENDPOINT`)
 - `services.nanitor-agent.enroll.enable` : Automatically run signup if not enrolled (default: `true`)
-- `services.nanitor-agent.enroll.serverUrl` : Optional server URL to set before signup
+- `services.nanitor-agent.enroll.serverUrl` : Server URL string to set before signup (e.g. `"https://cci.nanitor.net/api"`). Mutually exclusive with `enroll.serverUrlFile`
+- `services.nanitor-agent.enroll.serverUrlFile` : Path to a file containing the server URL. Read at runtime (whitespace stripped). Use this when the URL is managed by sops-nix or agenix. Mutually exclusive with `enroll.serverUrl`
 - `services.nanitor-agent.enroll.key` : Signup key value (raw base64 string) for automatic enrollment. Mutually exclusive with `enroll.keyFile`. Alternative: set `NANITOR_ENROLL_TOKEN` in `environment`
 - `services.nanitor-agent.enroll.keyFile` : Path to a file containing the signup key. Supports both PEM format (with `-----BEGIN/END-----` headers) and raw base64; PEM headers are stripped automatically. Recommended when using sops-nix or agenix. Mutually exclusive with `enroll.key`
 - `services.nanitor-agent.healthCheck.enable` : Run a health check after start (default: `true`)
@@ -56,13 +57,14 @@ services.nanitor-agent = {
   enable = true;
   enroll.enable = true;
   enroll.keyFile = config.sops.secrets.nanitor_enroll_token.path;
-  enroll.serverUrl = "https://cci.nanitor.net/api";
+  enroll.serverUrlFile = config.sops.secrets.nanitor_endpoint.path;
 };
 ```
 
-The `keyFile` option reads the secret file at runtime and automatically strips PEM headers
-if the file is in PEM format (e.g., `-----BEGIN ORGANIZATION SIGNUP KEY-----`).
-This works with both PEM-wrapped and raw base64 key files.
+Both `keyFile` and `serverUrlFile` read their secret files at runtime, so they work
+correctly with sops-nix and agenix (which expose secrets as files under `/run/secrets/`).
+`keyFile` also automatically strips PEM headers if the key file is in PEM format
+(e.g. `-----BEGIN ORGANIZATION SIGNUP KEY-----`); raw base64 files work equally well.
 
 ### Example with Direct Key Value
 ```nix
