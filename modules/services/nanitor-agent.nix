@@ -242,7 +242,9 @@ in
                 exit 1
               fi
               # Read the key file and strip PEM headers/footers if present.
-              NANITOR_SIGNUP_KEY=$(${pkgs.gnused}/bin/sed '/^-----BEGIN.*-----$/d; /^-----END.*-----$/d' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '[:space:]')
+              # Use grep -v to remove any line starting with '-----', which is simpler and
+              # avoids issues with the $ anchor when lines have trailing \r or other edge cases.
+              NANITOR_SIGNUP_KEY=$(${pkgs.gnugrep}/bin/grep -v '^-----' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '[:space:]')
               if [ -z "$NANITOR_SIGNUP_KEY" ]; then
                 echo "[nanitor-agent unit] ERROR: key file is empty or contains only PEM headers: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
