@@ -103,8 +103,8 @@ in
       default = null;
       description = ''
         Path to a file containing the signup key for automatic enrollment.
-        The file may be in PEM format (with -----BEGIN/END----- headers) or
-        contain raw base64 content; PEM headers are stripped automatically.
+        The file path is passed directly to the nanitor-agent binary via
+        its --keyfile flag, which handles the file format natively.
         This is the recommended option when using secret managers like
         sops-nix or agenix, which provide secrets as files on disk.
         Mutually exclusive with enroll.key.
@@ -227,13 +227,15 @@ in
           # Build the signup key argument based on the configured source.
           # Priority: keyFile > key > NANITOR_ENROLL_TOKEN env var
           signupKeyArg =
-            if cfg.enroll.keyFile != null then "--key \"$NANITOR_SIGNUP_KEY\""
+            if cfg.enroll.keyFile != null then "--keyfile ${lib.escapeShellArg cfg.enroll.keyFile}"
             else if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}"
             else if (cfg.environment.NANITOR_ENROLL_TOKEN or "") != "" then "--key \"$NANITOR_ENROLL_TOKEN\""
             else "";
 
-          # When keyFile is set, read the file at runtime and strip PEM headers if present.
-          # This handles both raw base64 and PEM-wrapped keys transparently.
+          # When keyFile is set, validate the file exists and is non-empty before signup.
+          # The binary's --keyfile flag reads and processes the file directly, so no
+          # shell-side content extraction is needed (and avoids pipefail hazards with
+          # grep/tr pipelines that could silently exit 1 under set -euo pipefail).
           readKeyFileScript =
             if cfg.enroll.keyFile != null then ''
               if [ ! -f ${lib.escapeShellArg cfg.enroll.keyFile} ]; then
@@ -241,16 +243,11 @@ in
                 echo "[nanitor-agent unit] If using sops-nix or agenix, ensure the secret is available before this service starts."
                 exit 1
               fi
-              # Read the key file and strip PEM headers/footers if present.
-              # Use grep -v to remove any line starting with '-----', which is simpler and
-              # avoids issues with the $ anchor when lines have trailing \r or other edge cases.
-              NANITOR_SIGNUP_KEY=$(${pkgs.gnugrep}/bin/grep -v '^-----' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '[:space:]')
-              if [ -z "$NANITOR_SIGNUP_KEY" ]; then
-                echo "[nanitor-agent unit] ERROR: key file is empty or contains only PEM headers: ${lib.escapeShellArg cfg.enroll.keyFile}"
+              if [ ! -s ${lib.escapeShellArg cfg.enroll.keyFile} ]; then
+                echo "[nanitor-agent unit] ERROR: key file is empty: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
               fi
-              export NANITOR_SIGNUP_KEY
-              echo "[nanitor-agent unit] Loaded signup key from file (${if cfg.enroll.keyFile != null then "PEM headers stripped if present" else "raw"})"
+              echo "[nanitor-agent unit] Key file found: ${lib.escapeShellArg cfg.enroll.keyFile}"
             '' else "";
 
         in lib.mkIf cfg.enroll.enable ''
