@@ -103,8 +103,9 @@ in
       default = null;
       description = ''
         Path to a file containing the signup key for automatic enrollment.
-        The file path is passed directly to the nanitor-agent binary via
-        its --keyfile flag, which handles the file format natively.
+        The file may optionally contain PEM-style header/footer lines
+        (-----BEGIN/END-----); these are stripped at runtime before the key
+        is passed to the binary via --key.
         This is the recommended option when using secret managers like
         sops-nix or agenix, which provide secrets as files on disk.
         Mutually exclusive with enroll.key.
@@ -226,16 +227,18 @@ in
 
           # Build the signup key argument based on the configured source.
           # Priority: keyFile > key > NANITOR_ENROLL_TOKEN env var
+          # When keyFile is used, readKeyFileScript extracts the content into
+          # $NANITOR_SIGNUP_KEY first (stripping PEM headers), so we reference that var.
           signupKeyArg =
-            if cfg.enroll.keyFile != null then "--keyfile ${lib.escapeShellArg cfg.enroll.keyFile}"
+            if cfg.enroll.keyFile != null then "--key \"$NANITOR_SIGNUP_KEY\""
             else if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}"
             else if (cfg.environment.NANITOR_ENROLL_TOKEN or "") != "" then "--key \"$NANITOR_ENROLL_TOKEN\""
             else "";
 
-          # When keyFile is set, validate the file exists and is non-empty before signup.
-          # The binary's --keyfile flag reads and processes the file directly, so no
-          # shell-side content extraction is needed (and avoids pipefail hazards with
-          # grep/tr pipelines that could silently exit 1 under set -euo pipefail).
+          # When keyFile is set: validate the file, then extract the raw key content
+          # into $NANITOR_SIGNUP_KEY by stripping PEM-style header/footer lines and
+          # all whitespace. awk is used (not grep -v) because awk always exits 0,
+          # avoiding a silent pipefail when grep finds no non-header lines.
           readKeyFileScript =
             if cfg.enroll.keyFile != null then ''
               if [ ! -f ${lib.escapeShellArg cfg.enroll.keyFile} ]; then
@@ -247,7 +250,12 @@ in
                 echo "[nanitor-agent unit] ERROR: key file is empty: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
               fi
-              echo "[nanitor-agent unit] Key file found: ${lib.escapeShellArg cfg.enroll.keyFile}"
+              NANITOR_SIGNUP_KEY=$(awk '!/^-----/' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '[:space:]')
+              if [ -z "$NANITOR_SIGNUP_KEY" ]; then
+                echo "[nanitor-agent unit] ERROR: key file contains no usable content after stripping PEM headers"
+                exit 1
+              fi
+              echo "[nanitor-agent unit] Key file read: ${lib.escapeShellArg cfg.enroll.keyFile}"
             '' else "";
 
         in lib.mkIf cfg.enroll.enable ''
