@@ -228,25 +228,27 @@ in
 
           # Build the signup key argument based on the configured source.
           # Priority: keyFile > key > NANITOR_ENROLL_TOKEN env var
-          # When keyFile is used, readKeyFileScript extracts the content into
-          # $NANITOR_SIGNUP_KEY first (stripping PEM headers), so we reference that var.
+          # When keyFile is used, readKeyFileScript rewrites the key into a
+          # proper multi-line PEM temp file and sets $NANITOR_KEY_TMPFILE.
           signupKeyArg =
-            if cfg.enroll.keyFile != null then "--key \"$NANITOR_SIGNUP_KEY\""
+            if cfg.enroll.keyFile != null then "--keyfile \"$NANITOR_KEY_TMPFILE\""
             else if cfg.enroll.key != null then "--key ${lib.escapeShellArg cfg.enroll.key}"
             else if (cfg.environment.NANITOR_ENROLL_TOKEN or "") != "" then "--key \"$NANITOR_ENROLL_TOKEN\""
             else "";
 
-          # When keyFile is set: validate the file, then read its content into
-          # $NANITOR_SIGNUP_KEY for passing to the binary via --key.
+          # When keyFile is set: validate the secret file, then reformat it into a
+          # proper multi-line PEM temp file for --keyfile.
           #
-          # The Nanitor enrollment key format is a single-line PEM-like string:
-          #   -----BEGIN ORGANIZATION SIGNUP KEY----- JWT + SIGNATURE -----END ORGANIZATION SIGNUP KEY-----
+          # Background on the format detective work:
+          #   The sops-nix secret is a single-line PEM:
+          #     -----BEGIN ORGANIZATION SIGNUP KEY----- JWT + SIG -----END...-----
+          #   - grep -v/awk '!/^-----/' → empty (whole line starts with -----)
+          #   - --key with markers stripped → "Header not found"
+          #   - --key with full content (tr -d newlines) → "Invalid input, signature separator"
+          #   - --keyfile directly → "Invalid" (trailing newline or single-line format)
           #
-          # The binary's --key flag expects the FULL string including the
-          # -----BEGIN/END----- markers (confirmed: stripping them causes
-          # "Header not found"; --keyfile causes "Invalid" due to trailing newline).
-          # We read the file with tr -d '\r\n' to strip only newline characters,
-          # preserving the markers and the internal " + " separator.
+          # Solution: extract the body between the markers with sed, then write a
+          # properly formatted multi-line PEM file to a mktemp path and pass to --keyfile.
           readKeyFileScript =
             if cfg.enroll.keyFile != null then ''
               if [ ! -f ${lib.escapeShellArg cfg.enroll.keyFile} ]; then
@@ -258,12 +260,16 @@ in
                 echo "[nanitor-agent unit] ERROR: key file is empty: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
               fi
-              NANITOR_SIGNUP_KEY=$(tr -d '\r\n' < ${lib.escapeShellArg cfg.enroll.keyFile})
-              if [ -z "$NANITOR_SIGNUP_KEY" ]; then
-                echo "[nanitor-agent unit] ERROR: key file is blank (contains only whitespace)"
+              # Extract PEM header label (e.g. "ORGANIZATION SIGNUP KEY") and body.
+              KEY_LABEL=$(sed 's/^[[:space:]]*-----BEGIN[[:space:]]*\([^-]*\)-----.*$/\1/' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '\r\n')
+              KEY_BODY=$(sed 's/^[[:space:]]*-----BEGIN[^-]*-----[[:space:]]*//; s/[[:space:]]*-----END[^-]*-----[[:space:]]*$//' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '\r\n')
+              if [ -z "$KEY_BODY" ]; then
+                echo "[nanitor-agent unit] ERROR: key file contains no body content between PEM markers"
                 exit 1
               fi
-              echo "[nanitor-agent unit] Key file read: ${lib.escapeShellArg cfg.enroll.keyFile}"
+              NANITOR_KEY_TMPFILE=$(mktemp /tmp/nanitor-signup-key.XXXXXX)
+              printf '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$KEY_LABEL" "$KEY_BODY" "$KEY_LABEL" > "$NANITOR_KEY_TMPFILE"
+              echo "[nanitor-agent unit] Key file read and reformatted: ${lib.escapeShellArg cfg.enroll.keyFile}"
             '' else "";
 
         in lib.mkIf cfg.enroll.enable ''
@@ -280,6 +286,11 @@ in
           else
             echo "[nanitor-agent unit] Agent already enrolled (UUID: $AGENT_UUID)"
           fi
+
+          ${lib.optionalString (cfg.enroll.keyFile != null) ''
+            # Clean up temp key file if one was created.
+            [ -n "''${NANITOR_KEY_TMPFILE:-}" ] && rm -f "$NANITOR_KEY_TMPFILE" || true
+          ''}
         '';
 
       # Start command (using NixOS 'script' convenience so we can pass --config easily).
