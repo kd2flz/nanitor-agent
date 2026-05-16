@@ -260,13 +260,46 @@ in
                 echo "[nanitor-agent unit] ERROR: key file is empty: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
               fi
-              # Write a temp file with the key content minus trailing newlines.
-              # $() strips trailing newlines; echo -n writes without adding one back.
-              # This is the simplest possible pass-through: original content, no newline.
+
+              # Diagnostic: log key file metadata to help diagnose format issues.
+              _KEY_LINES=$(wc -l < ${lib.escapeShellArg cfg.enroll.keyFile})
+              _KEY_BYTES=$(wc -c < ${lib.escapeShellArg cfg.enroll.keyFile})
+              _HAS_BEGIN=$(grep -c '-----BEGIN' ${lib.escapeShellArg cfg.enroll.keyFile} || true)
+              _HAS_PLUS=$(grep -cF ' + ' ${lib.escapeShellArg cfg.enroll.keyFile} || true)
+              echo "[nanitor-agent unit] Key file: lines=$_KEY_LINES bytes=$_KEY_BYTES has_BEGIN=$_HAS_BEGIN has_plus_sep=$_HAS_PLUS"
+
+              # Strategy: build a proper multi-line PEM where the body is split at
+              # the ' + ' separator (JWT + SIGNATURE → two separate lines).
+              # The v7 binary appears to expect newline-separated JWT and signature.
               NANITOR_KEY_TMPFILE=$(mktemp /tmp/nanitor-signup-key.XXXXXX)
-              # shellcheck disable=SC2116
-              echo -n "$(cat ${lib.escapeShellArg cfg.enroll.keyFile})" > "$NANITOR_KEY_TMPFILE"
-              echo "[nanitor-agent unit] Key file staged for signup: ${lib.escapeShellArg cfg.enroll.keyFile}"
+
+              # Extract label, JWT, and signature from the (possibly single-line) PEM.
+              _RAW=$(cat ${lib.escapeShellArg cfg.enroll.keyFile})
+              # Strip PEM markers to get the body (handles single-line and multi-line).
+              _BODY=$(echo "$_RAW" | sed 's/^[[:space:]]*-----BEGIN[^-]*-----[[:space:]]*//' | sed 's/[[:space:]]*-----END[^-]*-----[[:space:]]*$//' | tr -d '\r\n')
+              # Extract header label (strip trailing whitespace in case of "BEGIN FOO -----").
+              _LABEL=$(echo "$_RAW" | grep -o 'BEGIN [^-]*' | sed 's/BEGIN //' | tr -d '\r\n' | sed 's/[[:space:]]*$//')
+
+              if echo "$_BODY" | grep -qF ' + '; then
+                # Key body uses ' + ' separator; split into JWT and signature on separate lines.
+                _JWT=$(echo "$_BODY" | sed 's/ + .*//')
+                _SIG=$(echo "$_BODY" | sed 's/.* + //')
+                echo "[nanitor-agent unit] Key body has ' + ' separator; writing split-line PEM"
+                printf '%s\n%s\n%s\n%s\n' \
+                  "-----BEGIN ''${_LABEL}-----" \
+                  "$_JWT" \
+                  "$_SIG" \
+                  "-----END ''${_LABEL}-----" > "$NANITOR_KEY_TMPFILE"
+              else
+                # No ' + ' separator; write single-body-line PEM.
+                echo "[nanitor-agent unit] Key body has no ' + ' separator; writing single-body PEM"
+                printf '%s\n%s\n%s\n' \
+                  "-----BEGIN ''${_LABEL}-----" \
+                  "$_BODY" \
+                  "-----END ''${_LABEL}-----" > "$NANITOR_KEY_TMPFILE"
+              fi
+
+              echo "[nanitor-agent unit] Key file staged for signup ($(wc -l < "$NANITOR_KEY_TMPFILE") lines)"
             '' else "";
 
         in lib.mkIf cfg.enroll.enable ''
