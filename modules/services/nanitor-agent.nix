@@ -260,16 +260,13 @@ in
                 echo "[nanitor-agent unit] ERROR: key file is empty: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
               fi
-              # Extract PEM header label (e.g. "ORGANIZATION SIGNUP KEY") and body.
-              KEY_LABEL=$(sed 's/^[[:space:]]*-----BEGIN[[:space:]]*\([^-]*\)-----.*$/\1/' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '\r\n')
-              KEY_BODY=$(sed 's/^[[:space:]]*-----BEGIN[^-]*-----[[:space:]]*//; s/[[:space:]]*-----END[^-]*-----[[:space:]]*$//' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '\r\n')
-              if [ -z "$KEY_BODY" ]; then
-                echo "[nanitor-agent unit] ERROR: key file contains no body content between PEM markers"
-                exit 1
-              fi
+              # Write a temp file with the key content minus trailing newlines.
+              # $() strips trailing newlines; echo -n writes without adding one back.
+              # This is the simplest possible pass-through: original content, no newline.
               NANITOR_KEY_TMPFILE=$(mktemp /tmp/nanitor-signup-key.XXXXXX)
-              { echo "-----BEGIN $KEY_LABEL-----"; echo "$KEY_BODY"; echo "-----END $KEY_LABEL-----"; } > "$NANITOR_KEY_TMPFILE"
-              echo "[nanitor-agent unit] Key file read and reformatted: ${lib.escapeShellArg cfg.enroll.keyFile}"
+              # shellcheck disable=SC2116
+              echo -n "$(cat ${lib.escapeShellArg cfg.enroll.keyFile})" > "$NANITOR_KEY_TMPFILE"
+              echo "[nanitor-agent unit] Key file staged for signup: ${lib.escapeShellArg cfg.enroll.keyFile}"
             '' else "";
 
         in lib.mkIf cfg.enroll.enable ''
