@@ -268,7 +268,7 @@ in
                 exit 1
               fi
               NANITOR_KEY_TMPFILE=$(mktemp /tmp/nanitor-signup-key.XXXXXX)
-              printf '-----BEGIN %s-----\n%s\n-----END %s-----\n' "$KEY_LABEL" "$KEY_BODY" "$KEY_LABEL" > "$NANITOR_KEY_TMPFILE"
+              { echo "-----BEGIN $KEY_LABEL-----"; echo "$KEY_BODY"; echo "-----END $KEY_LABEL-----"; } > "$NANITOR_KEY_TMPFILE"
               echo "[nanitor-agent unit] Key file read and reformatted: ${lib.escapeShellArg cfg.enroll.keyFile}"
             '' else "";
 
