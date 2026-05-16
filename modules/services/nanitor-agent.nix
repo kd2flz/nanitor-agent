@@ -165,8 +165,8 @@ in
       description = "Nanitor Security Agent";
 
       # Provide runtime tools via systemd's path option (adds bin/sbin to PATH).
-      # coreutils: tr, cat, etc.  gawk: awk  gnugrep/gnused: grep, sed (used in preStart)
-      path = with pkgs; [ python3 dmidecode coreutils gawk gnugrep gnused ];
+      # coreutils: tr, cat, etc.  gnugrep/gnused: grep, sed (used in preStart)
+      path = with pkgs; [ python3 dmidecode coreutils gnugrep gnused ];
 
       after    = [ "network-online.target" ];
       wants    = [ "network-online.target" ];
@@ -237,9 +237,16 @@ in
             else "";
 
           # When keyFile is set: validate the file, then extract the raw key content
-          # into $NANITOR_SIGNUP_KEY by stripping PEM-style header/footer lines and
-          # all whitespace. awk is used (not grep -v) because awk always exits 0,
-          # avoiding a silent pipefail when grep finds no non-header lines.
+          # into $NANITOR_SIGNUP_KEY.
+          #
+          # The Nanitor enrollment key is stored in a single-line PEM-like format:
+          #   -----BEGIN ORGANIZATION SIGNUP KEY----- JWT + SIGNATURE -----END ORGANIZATION SIGNUP KEY-----
+          #
+          # grep -v '^-----' and awk '!/^-----/' both fail here because the ENTIRE
+          # line starts with "-----", yielding empty output (or exit 1 for grep).
+          # sed substitution is the correct tool: it strips the markers from the
+          # line without changing the internal content (preserving the " + " separator
+          # between the JWT and signature, which the binary requires).
           readKeyFileScript =
             if cfg.enroll.keyFile != null then ''
               if [ ! -f ${lib.escapeShellArg cfg.enroll.keyFile} ]; then
@@ -251,7 +258,7 @@ in
                 echo "[nanitor-agent unit] ERROR: key file is empty: ${lib.escapeShellArg cfg.enroll.keyFile}"
                 exit 1
               fi
-              NANITOR_SIGNUP_KEY=$(awk '!/^-----/' ${lib.escapeShellArg cfg.enroll.keyFile} | tr -d '[:space:]')
+              NANITOR_SIGNUP_KEY=$(sed 's/^[[:space:]]*-----BEGIN[^-]*-----[[:space:]]*//; s/[[:space:]]*-----END[^-]*-----[[:space:]]*$//' ${lib.escapeShellArg cfg.enroll.keyFile})
               if [ -z "$NANITOR_SIGNUP_KEY" ]; then
                 echo "[nanitor-agent unit] ERROR: key file contains no usable content after stripping PEM headers"
                 exit 1
