@@ -165,7 +165,8 @@ in
       description = "Nanitor Security Agent";
 
       # Provide runtime tools via systemd's path option (adds bin/sbin to PATH).
-      path = with pkgs; [ python3 dmidecode ];
+      # coreutils: tr, cat, etc.  gawk: awk  gnugrep/gnused: grep, sed (used in preStart)
+      path = with pkgs; [ python3 dmidecode coreutils gawk gnugrep gnused ];
 
       after    = [ "network-online.target" ];
       wants    = [ "network-online.target" ];
