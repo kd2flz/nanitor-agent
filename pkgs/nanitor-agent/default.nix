@@ -1,9 +1,8 @@
-{ stdenvNoCC, lib, dpkg, autoPatchelfHook, makeWrapper, openssl, zlib, curl, util-linux, systemd, gcc, python3, dmidecode, src }:
+{ stdenvNoCC, lib, dpkg, autoPatchelfHook, makeWrapper, openssl, zlib, curl, util-linux, systemd, gcc, python3, dmidecode, src, version }:
 
 stdenvNoCC.mkDerivation {
   pname = "nanitor-agent";
-  version = "latest";
-  inherit src;
+  inherit version src;
   dontUnpack = true;
 
   nativeBuildInputs = [
